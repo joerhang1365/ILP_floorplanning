@@ -91,7 +91,9 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     }
     
     // set objective to minimize height
-    solver_.setObjective({{"Y", 1.0}}, 'M'); // 'M" for minimize
+    // 'M' for minimize
+
+    solver_.setObjective({{"Y", 1.0}}, 'M');
 
     // add constraints for each module
 
@@ -99,11 +101,23 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     {
         Module * mod = clusterModules[i];
 
-        // TODO: check if this is correct
+        // TODO: check if original width/height is good
         double w = mod->getOrgWidth();
         double h = mod->getOrgHeight();
 
         // inside outline constraints
+
+        // x_i >= 0 and y_i >= 0 are already handled by variable domain
+
+        // TODO: check if w - h or h - w is correct
+
+        // x_i + w_i' <= targetWidth
+        // x_i + r_i * (h_i - w_i) <= targetWidth - w_i
+        solver_.addConstraint("x_bound_" + std::to_string(i), {{x_vars[i], 1.0}, {r_vars[i], h - w}}, '<', targetWidth - w);
+
+        // y_i + h_i' <= targetHeight
+        // y_i + r_i * (w_i - h_i) * r_i <= targetWidth - h_i
+        solver_.addConstraint("y_bound_" + std::to_string(i), {{y_vars[i], 1.0}, {r_vars[i], w - h}}, '<', targetHeight - h);
     }
     
     // After all constraints and the objective are set, solve the model.
