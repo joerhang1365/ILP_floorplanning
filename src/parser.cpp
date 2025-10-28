@@ -16,7 +16,7 @@ void Floorplanner::initialize(std::string inputFile)
     {
         int id;
         int width, height;
-        infile >> id>> width >> height;
+        infile >> id >> width >> height;
         modules.push_back(std::unique_ptr<Module>(new Module(id, width, height)));
     }
 }
@@ -55,12 +55,12 @@ bool Floorplanner::validityCheck()
     {
         Module * m = modules[i].get();
         if( (m->getPosition().x() < -0.1) || (m->getPosition().y() < -0.1) ||   // if solver used int as var. it's possible to get negative value
-            (m->getPosition().x() + m->getRotatedWidth() > spec.targetWidth+0.1) ||
-            (m->getPosition().y() + m->getRotatedHeight() > spec.targetHeight+0.1))
+            (m->getPosition().x() + m->getRotatedWidth() > spec.targetWidth + 0.1) ||
+            (m->getPosition().y() + m->getRotatedHeight() > spec.targetHeight + 0.1))
         {
             std::cout << "Module " << m->getId() << " exceed the boundary!" << std::endl;
             std::cout << "Position: (" << m->getPosition().x() << "," << m->getPosition().y() << ")" << std::endl;
-            std::cout<<"Rotated WH: (" << m->getRotatedWidth() << "," << m->getRotatedHeight() << ")" << std::endl;
+            std::cout << "Rotated WH: (" << m->getRotatedWidth() << "," << m->getRotatedHeight() << ")" << std::endl;
             return false;
         }
     }

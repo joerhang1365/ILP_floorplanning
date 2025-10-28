@@ -12,7 +12,7 @@ struct Spec
     Spec(std::string specFile) 
     {
         std::ifstream infile(specFile);
-        infile>>problemType>>targetWidth>>targetHeight;
+        infile >> problemType >> targetWidth >> targetHeight;
     }
     Spec() : problemType(0), targetWidth(0), targetHeight(0) {}
 };
