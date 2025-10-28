@@ -103,7 +103,7 @@ void Cluster::collectAllClusters(std::vector<Cluster *> &out, bool include_self,
         {
             continue;
         }
-        if (auto* c = dynamic_cast<Cluster *>(m)) 
+        if (auto * c = dynamic_cast<Cluster *>(m)) 
         {
             if (visited.insert(c).second)
             {
@@ -121,12 +121,24 @@ bool isCluster(Module * m)
 
 void Cluster::rotate()
 {
-    // TODO: Implement your cluster-level rotate(). (not required but strongly recommanded)
-    // Hint: First collect all submodules and subclusters with
-    //       collectAll(std::vector<Module*>& modules,
-    //                  std::vector<Cluster*>& clusters,
-    //                  /*include_this=*/true);
-    //       This lets you rotate at the cluster level without making
-    //       recursive calls to the solver.
+    std::vector<Module *> modules;
+    std::vector<Cluster *> clusters;
+
+    collectAll(modules, clusters, true);
+
+    Point center = this->getCenter();
+
+    for (auto m : modules)
+    {
+        Point module_center = m->getCenter();
+        Point relative_pos = module_center - center;
+        Point rotated_pos = Point(-relative_pos.y(), relative_pos.x());
+        Point new_center = center + rotated_pos;
+        Point new_position = Point(new_center.x() - m->getRotatedWidth() / 2.0, new_center.y() - m->getRotatedHeight() / 2.0);
+        
+        m->rotate();
+        m->setPosition(new_position);
+    }
+
     Module::rotate();
 }

@@ -20,8 +20,8 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     // Update the positions and rotations of modules based on the solution
 
     std::vector<Module *> clusterModules = c->getSubModules();
-    /*TODO: add ILP formulation to solve this module set*/
 
+    /*TODO: add ILP formulation to solve this module set*/
     /*
     ILP Usage Example (Gurobi)
 
@@ -56,8 +56,56 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     - When the time limit is reached, Gurobi may still return a feasible solution (incumbent).
       Before accessing solution values, check if the solution count (SolCount) > 0.
     */
-    
 
+    int n = clusterModules.size();
+    double M = std::max(targetWidth, targetHeight); // Big-M
+
+    std::vector<std::string> x_vars(n); // left of module
+    std::vector<std::string> y_vars(n); // bottom of module
+    std::vector<std::string> r_vars(n); // rotation flag
+
+    // create variables for each module
+
+    for (int i = 0; i < n; i++)
+    {
+        x_vars[i] = "x_" + std::to_string(i);
+        y_vars[i] = "y_" + std::to_string(i);
+        r_vars[i] = "r_" + std::to_string(i);
+
+        solver_.addVariable(x_vars[i], 0.0, targetWidth, GRB_CONTINUOUS);
+        solver_.addVariable(y_vars[i], 0.0, targetHeight, GRB_CONTINUOUS);
+        solver_.addVariable(r_vars[i], 0.0, 1.0, GRB_BINARY);
+    }
+
+    // create non-overlapping variables between modules
+
+    for (int i = 0; i < n; i++)
+    {
+        for (int j = i + 1; j < n; j++)
+        {
+            std::string p_name = "p_" + std::to_string(i) + "_" + std::to_string(j);
+            std::string q_name = "q_" + std::to_string(i) + "_" + std::to_string(j);
+            solver_.addVariable(p_name, 0.0, 1.0, GRB_BINARY);
+            solver_.addVariable(q_name, 0.0, 1.0, GRB_BINARY);
+        }
+    }
+    
+    // set objective to minimize height
+    solver_.setObjective({{"Y", 1.0}}, 'M'); // 'M" for minimize
+
+    // add constraints for each module
+
+    for (int i = 0; i < n; i++)
+    {
+        Module * mod = clusterModules[i];
+
+        // TODO: check if this is correct
+        double w = mod->getOrgWidth();
+        double h = mod->getOrgHeight();
+
+        // inside outline constraints
+    }
+    
     // After all constraints and the objective are set, solve the model.
     // Do NOT remove the following lines.
 
