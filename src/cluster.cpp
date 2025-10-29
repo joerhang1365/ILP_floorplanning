@@ -146,6 +146,6 @@ void Cluster::rotate()
     }
 
     // update clusters rotation flag
-    // its derived from the Module class
+    // it is derived from the Module class
     Module::rotate();
 }
