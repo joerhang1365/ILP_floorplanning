@@ -1,4 +1,7 @@
 #include "floorplanner.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 void Floorplanner::solve() 
 {
@@ -156,9 +159,15 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
         double y = solver_.getVariableValue(y_vars[i]);
         double r = solver_.getVariableValue(r_vars[i]);
     
+        // round to integers so pythong map doesnt explode
+        int x_int = static_cast<int>(std::round(x));
+        int y_int = static_cast<int>(std::round(y));
+        
         // change the modules position and rotation according to solution
-        clusterModules[i]->setPosition(Point(x, y));
-        clusterModules[i]->setRotate(r > 0.5);
+        clusterModules[i]->setPosition(Point(x_int, y_int));
+        // convert r to boolean
+        bool b = r > 0.5 ? true : false;
+        clusterModules[i]->setRotate(b);
     }
 
     solver_.reset();    // DO NOT delete or comment out this line
@@ -173,6 +182,7 @@ float Floorplanner::category0Opt()
 
     clusters.clear();
     clusters.push_back(std::make_unique<Cluster>(modules));
+
     float finalHeight = solveCluster(clusters[0].get(), spec.targetWidth, spec.targetHeight);
 
     // you may try to uncomment the following 4 functions to verify if your cluster level 
@@ -180,15 +190,68 @@ float Floorplanner::category0Opt()
 
     //clusters[0]->setPosition(Point(2025,1015));
     //clusters[0]->rotate();
-    //clusters[0]->setPosition(Point(10,2));
+    //clusters[0]->setPosition(Point(6.5,0.5));
     //clusters[0]->rotate();
 
     return finalHeight;
 }
 
+// current implementation is a simple greedy algorithm called shelf packing
+// it works but can be better
+// if I have time another solution is to group modules into clusters and solve each cluster with ILP
+// then arrange the clusters using their width and heights using my shelf packing algorithm
 float Floorplanner::category1Opt()
 {
-    // TODO: Implement your own heuristic to solve this problem.
+    clusters.clear();
 
-    return 0.0;
+    std::vector<Module *> sortedModules;
+
+    for (auto &module : modules)
+    {
+        sortedModules.push_back(module.get());
+    }
+
+    // rotate so height >= width
+    for (auto &module : sortedModules)
+    {
+        if (module->getRotatedHeight() < module->getRotatedWidth())
+        {
+            module->setRotate(true);
+        }
+    }
+
+    // sort tallest height
+    std::sort(sortedModules.begin(), sortedModules.end(), [](Module * a, Module * b) {
+        
+        return a->getRotatedHeight() > b->getRotatedHeight();
+    });
+    
+    double currentX = 0.0;
+    double currentY = 0.0;
+    double shelfHeight = 0.0;
+
+    for (auto &module : sortedModules)
+    {
+        double width = module->getRotatedWidth();
+        double height = module->getRotatedHeight();
+
+        // check if fits on current shelf
+        if (currentX + width <= spec.targetWidth)
+        {
+            module->setPosition(Point(currentX, currentY));
+            currentX += width;
+            shelfHeight = std::max(shelfHeight, height);
+        }
+        // else make new shelf
+        else
+        {
+            currentX = 0.0;
+            currentY += shelfHeight;
+            shelfHeight = height;
+            module->setPosition(Point(currentX, currentY));
+            currentX += width;
+        }
+    }
+
+    return currentY + shelfHeight;
 }
