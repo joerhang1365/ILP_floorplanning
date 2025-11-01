@@ -23,21 +23,16 @@ void Floorplanner::solve()
 bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeight) 
 {
     std::vector<Module *> clusterModules = c->getSubModules();
-
-    if (!isCluster(clusterModules[0])) 
-    {
-        std::cout << "clusterModules[0] is not in a cluster" << std::endl;
-    }
-
     int n = clusterModules.size();
-    double M = std::max(targetWidth, targetHeight); // Big-M constant
+    double M = std::max(targetWidth, targetHeight);
 
     // create variables for each module
     //
 
-    std::vector<std::string> x_vars(n); // left of module
-    std::vector<std::string> y_vars(n); // bottom of module
-    std::vector<std::string> r_vars(n); // rotation flag
+    // x_i: left of module i
+    // y_i: bottom of module i
+    // r_i: rotation flag of module i
+    std::vector<std::string> x_vars(n), y_vars(n), r_vars(n);
 
     for (int i = 0; i < n; i++)
     {
@@ -90,11 +85,13 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
 
         // x_i + w_i' <= W
         // x_i + r_i * (h_i - w_i) <= targetWidth - w_i
-        solver_.addConstraint("inside_outline_x" + std::to_string(i), {{x_vars[i], 1.0}, {r_vars[i], h_i - w_i}}, '<', targetWidth - w_i);
+        solver_.addConstraint("inside_outline_x" + std::to_string(i), 
+            {{x_vars[i], 1.0}, {r_vars[i], h_i - w_i}}, '<', targetWidth - w_i);
 
         // y_i + h_i' <= Y
         // y_i + r_i * (w_i - h_i) * r_i - Y <= -h_i
-        solver_.addConstraint("inside_outline_y" + std::to_string(i), {{y_vars[i], 1.0}, {r_vars[i], w_i - h_i}, {"Y", -1.0}}, '<', -h_i);
+        solver_.addConstraint("inside_outline_y" + std::to_string(i), 
+            {{y_vars[i], 1.0}, {r_vars[i], w_i - h_i}, {"Y", -1.0}}, '<', -h_i);
 
         // non-overlapping constraints
         for (int j = i + 1; j < n; j++)
@@ -105,22 +102,22 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
 
             // x_i + w_i' <= x_j + M * (1 - p_ij)
             // x_i - x_j + r_i * (h_i - w_i) - M * (p_ij) - M * (q_ij) <= -w_i
-            solver_.addConstraint("non_overlap_x1_" + std::to_string(i) + "_" + std::to_string(j), 
+            solver_.addConstraint("left_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{x_vars[i], 1.0}, {x_vars[j], -1.0}, {r_vars[i], h_i - w_i}, {p_vars[i][j], -M}, {q_vars[i][j], -M}}, '<', -w_i);
 
             // y_i + h_i' <= y_j + M * (1 + p_ij - q_ij)
             // y_i - y_j + r_i * (w_i - h_i) - M * (p_ij) + M * (q_ij) <= M - h_i
-            solver_.addConstraint("non_overlap_y1_" + std::to_string(i) + "_" + std::to_string(j), 
+            solver_.addConstraint("below_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{y_vars[i], 1.0}, {y_vars[j], -1.0}, {r_vars[i], w_i - h_i}, {p_vars[i][j], -M}, {q_vars[i][j], M}}, '<', M - h_i);
 
             // x_i >= x_j + w_j' - M * (1 - p_ij + q_ij)
             // x_i - x_j - r_j * (h_j - w_j) - M * (p_ij) + M * (q_ij) >= w_j - M
-            solver_.addConstraint("nono_verlap_x2_" + std::to_string(i) + "_" + std::to_string(j), 
+            solver_.addConstraint("right_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{x_vars[i], 1.0}, {x_vars[j], -1.0}, {r_vars[j], -(h_j - w_j)}, {p_vars[i][j], -M}, {q_vars[i][j], M}}, '>', w_j - M);
 
             // y_i >= y_j + h_j' - M * (2 - p_ij - q_ij)
             // y_i - y_j - r_j * (w_j - h_j) - M * (p_ij) - M * (q_ij) >= h_j - 2 * M
-            solver_.addConstraint("non_overlap_y2_" + std::to_string(i) + "_" + std::to_string(j), 
+            solver_.addConstraint("above_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{y_vars[i], 1.0}, {y_vars[j], -1.0}, {r_vars[j], -(w_j - h_j)}, {p_vars[i][j], -M}, {q_vars[i][j], -M}}, '>', h_j - 2 * M);
         }
     }
@@ -153,18 +150,17 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     }
 
     // extract solution from solver
+
+    double Y = solver_.getVariableValue("Y");
+
     for (int i = 0; i < n; i++) 
     {
         double x = solver_.getVariableValue(x_vars[i]);
         double y = solver_.getVariableValue(y_vars[i]);
         double r = solver_.getVariableValue(r_vars[i]);
-    
-        // round to integers so pythong map doesnt explode
-        int x_int = static_cast<int>(std::round(x));
-        int y_int = static_cast<int>(std::round(y));
         
         // change the modules position and rotation according to solution
-        clusterModules[i]->setPosition(Point(x_int, y_int));
+        clusterModules[i]->setPosition(Point(x, y));
         // convert r to boolean
         bool b = r > 0.5 ? true : false;
         clusterModules[i]->setRotate(b);
@@ -202,7 +198,70 @@ float Floorplanner::category0Opt()
 // then arrange the clusters using their width and heights using my shelf packing algorithm
 float Floorplanner::category1Opt()
 {
+    /*const int clusterSize = 5;
+
     clusters.clear();
+
+    // group modules into clusters
+    for (size_t i = 0; i < modules.size(); i += clusterSize)
+    {
+        std::vector<Module *> moduleCluster;
+        size_t end = std::min(i + clusterSize, modules.size());
+
+        for (size_t j = i; j < end; j++)
+        {
+            moduleCluster.push_back(modules[j].get());
+        }
+
+        if (!moduleCluster.empty())
+        {
+            clusters.push_back(std::make_unique<Cluster>(moduleCluster));
+        }
+    }
+
+    // solve each cluster
+    for (auto &cluster : clusters)
+    {
+        // calculate bounds for cluster
+        double maxWidth = 0.0;
+        double maxHeight = 0.0;
+
+        for (auto &module : cluster->getSubModules())
+        {
+            maxWidth = std::max(maxWidth, static_cast<double>(module->getRotatedWidth()));
+            maxHeight = std::max(maxHeight, static_cast<double>(module->getRotatedHeight()));
+        }
+        
+        // keep trying to solve and increase bounds
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            double w = maxWidth * (1.0 + 0.5 * attempt);
+            double h = maxHeight * (1.0 + 0.5 * attempt);
+
+            if (solveCluster(cluster.get(), w, h))
+            {
+                break;
+            }
+        }
+
+        maxWidth = 0;
+        maxHeight = 0;
+
+        for (maxWidth = 0; maxWidth < spec.targetHeight; maxWidth += 2)
+        {
+            for (maxHeight = 0; maxHeight < spec.targetHeight; maxHeight += 2)
+            {
+                if (solveCluster(cluster.get(), maxWidth, maxHeight))
+                {
+                    break;
+                }
+            }
+            if (maxHeight < spec.targetHeight)
+            {
+                break;
+            }
+        }
+    }*/
 
     std::vector<Module *> sortedModules;
 
@@ -222,7 +281,6 @@ float Floorplanner::category1Opt()
 
     // sort tallest height
     std::sort(sortedModules.begin(), sortedModules.end(), [](Module * a, Module * b) {
-        
         return a->getRotatedHeight() > b->getRotatedHeight();
     });
     
