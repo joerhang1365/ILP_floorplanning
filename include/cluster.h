@@ -16,6 +16,9 @@ public:
     void setPosition(const Point &pos);     
     void rotate();
     void setRotate(bool);
+    double getRotatedWidth();
+    double getRotatedHeight();
+    Point getCenter();
 
 private:
     void collectAllLeaves(std::vector<Module *> &out) const;

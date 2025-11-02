@@ -23,15 +23,23 @@ void Floorplanner::solve()
 bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeight) 
 {
     std::vector<Module *> clusterModules = c->getSubModules();
+
+    // reset modules because weird shit happening
+    for (auto m : clusterModules)
+    {
+        m->setRotate(false);
+        m->setPosition(Point(0, 0));
+    }
+
     int n = clusterModules.size();
     double M = std::max(targetWidth, targetHeight);
 
     // create variables for each module
     //
 
-    // x_i: left of module i
-    // y_i: bottom of module i
-    // r_i: rotation flag of module i
+    // x left coordinate
+    // y bottom coordinate
+    // r rotation flag
     std::vector<std::string> x_vars(n), y_vars(n), r_vars(n);
 
     for (int i = 0; i < n; i++)
@@ -83,15 +91,8 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
 
         // x_i >= 0 and y_i >= 0 are already handled by variable domain
 
-        // x_i + w_i' <= W
-        // x_i + r_i * (h_i - w_i) <= targetWidth - w_i
-        solver_.addConstraint("inside_outline_x" + std::to_string(i), 
-            {{x_vars[i], 1.0}, {r_vars[i], h_i - w_i}}, '<', targetWidth - w_i);
-
-        // y_i + h_i' <= Y
-        // y_i + r_i * (w_i - h_i) * r_i - Y <= -h_i
-        solver_.addConstraint("inside_outline_y" + std::to_string(i), 
-            {{y_vars[i], 1.0}, {r_vars[i], w_i - h_i}, {"Y", -1.0}}, '<', -h_i);
+        solver_.addConstraint("inside_outline_x" + std::to_string(i), {{x_vars[i], 1.0}, {r_vars[i], h_i - w_i}}, '<', targetWidth - w_i);
+        solver_.addConstraint("inside_outline_y" + std::to_string(i), {{y_vars[i], 1.0}, {r_vars[i], w_i - h_i}, {"Y", -1.0}}, '<', -h_i);
 
         // non-overlapping constraints
         for (int j = i + 1; j < n; j++)
@@ -100,23 +101,15 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
             double w_j = mod_j->getRotatedWidth();
             double h_j = mod_j->getRotatedHeight();
 
-            // x_i + w_i' <= x_j + M * (1 - p_ij)
-            // x_i - x_j + r_i * (h_i - w_i) - M * (p_ij) - M * (q_ij) <= -w_i
             solver_.addConstraint("left_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{x_vars[i], 1.0}, {x_vars[j], -1.0}, {r_vars[i], h_i - w_i}, {p_vars[i][j], -M}, {q_vars[i][j], -M}}, '<', -w_i);
 
-            // y_i + h_i' <= y_j + M * (1 + p_ij - q_ij)
-            // y_i - y_j + r_i * (w_i - h_i) - M * (p_ij) + M * (q_ij) <= M - h_i
             solver_.addConstraint("below_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{y_vars[i], 1.0}, {y_vars[j], -1.0}, {r_vars[i], w_i - h_i}, {p_vars[i][j], -M}, {q_vars[i][j], M}}, '<', M - h_i);
 
-            // x_i >= x_j + w_j' - M * (1 - p_ij + q_ij)
-            // x_i - x_j - r_j * (h_j - w_j) - M * (p_ij) + M * (q_ij) >= w_j - M
             solver_.addConstraint("right_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{x_vars[i], 1.0}, {x_vars[j], -1.0}, {r_vars[j], -(h_j - w_j)}, {p_vars[i][j], -M}, {q_vars[i][j], M}}, '>', w_j - M);
 
-            // y_i >= y_j + h_j' - M * (2 - p_ij - q_ij)
-            // y_i - y_j - r_j * (w_j - h_j) - M * (p_ij) - M * (q_ij) >= h_j - 2 * M
             solver_.addConstraint("above_" + std::to_string(i) + "_" + std::to_string(j), 
                 {{y_vars[i], 1.0}, {y_vars[j], -1.0}, {r_vars[j], -(w_j - h_j)}, {p_vars[i][j], -M}, {q_vars[i][j], -M}}, '>', h_j - 2 * M);
         }
@@ -158,9 +151,14 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
         double x = solver_.getVariableValue(x_vars[i]);
         double y = solver_.getVariableValue(y_vars[i]);
         double r = solver_.getVariableValue(r_vars[i]);
+
+        // convert positions to integers because python drawer freaks out
+        int x_int = static_cast<int>(std::round(x));
+        int y_int = static_cast<int>(std::round(y));
         
         // change the modules position and rotation according to solution
-        clusterModules[i]->setPosition(Point(x, y));
+        clusterModules[i]->setPosition(Point(x_int, y_int));
+
         // convert r to boolean
         bool b = r > 0.5 ? true : false;
         clusterModules[i]->setRotate(b);
@@ -198,7 +196,7 @@ float Floorplanner::category0Opt()
 // then arrange the clusters using their width and heights using my shelf packing algorithm
 float Floorplanner::category1Opt()
 {
-    /*const int clusterSize = 5;
+    const int clusterSize = 5;
 
     clusters.clear();
 
@@ -222,47 +220,84 @@ float Floorplanner::category1Opt()
     // solve each cluster
     for (auto &cluster : clusters)
     {
-        // calculate bounds for cluster
-        double maxWidth = 0.0;
-        double maxHeight = 0.0;
+        // try to find good constraints for solver
+        double totalArea = 0.0;
+        double maxModWidth = 0.0;
+        double maxModHeight = 0.0;
 
         for (auto &module : cluster->getSubModules())
         {
-            maxWidth = std::max(maxWidth, static_cast<double>(module->getRotatedWidth()));
-            maxHeight = std::max(maxHeight, static_cast<double>(module->getRotatedHeight()));
+            double w = module->getRotatedWidth();
+            double h = module->getRotatedHeight();
+            totalArea += w * h;
+            maxModWidth = std::max(maxModWidth, w);
+            maxModHeight = std::max(maxModHeight, h);
         }
         
-        // keep trying to solve and increase bounds
-        for (int attempt = 0; attempt < 5; attempt++)
+        // Try progressively larger bounds with better scaling
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            double w = maxWidth * (1.0 + 0.5 * attempt);
-            double h = maxHeight * (1.0 + 0.5 * attempt);
-
-            if (solveCluster(cluster.get(), w, h))
+            double width = std::min(static_cast<double>(spec.targetWidth), maxModWidth * (1.0 + attempt * 0.5));
+            double height = std::min(static_cast<double>(spec.targetHeight), maxModHeight * (1.0 + attempt * 0.5));
+            
+            if (solveCluster(cluster.get(), width, height))
             {
                 break;
             }
         }
+    }
 
-        maxWidth = 0;
-        maxHeight = 0;
+    // arrange clusters using shelf packing
 
-        for (maxWidth = 0; maxWidth < spec.targetHeight; maxWidth += 2)
+    std::vector<Cluster *> sortedClusters;
+
+    for (auto &cluster : clusters)
+    {
+        sortedClusters.push_back(cluster.get());
+    }
+
+    for (auto &cluster : sortedClusters)
+    {
+        if (cluster->getRotatedHeight() < cluster->getRotatedWidth())
         {
-            for (maxHeight = 0; maxHeight < spec.targetHeight; maxHeight += 2)
-            {
-                if (solveCluster(cluster.get(), maxWidth, maxHeight))
-                {
-                    break;
-                }
-            }
-            if (maxHeight < spec.targetHeight)
-            {
-                break;
-            }
+            //cluster->rotate();
         }
-    }*/
+    }
 
+    // sort tallest height
+    std::sort(sortedClusters.begin(), sortedClusters.end(), [](Cluster * a, Cluster * b) {
+        return a->getRotatedHeight() > b->getRotatedHeight();
+    });
+
+    double currentX = 0.0;
+    double currentY = 0.0;
+    double shelfHeight = 0.0;
+
+    for (auto &cluster : sortedClusters)
+    {
+        double width = cluster->getRotatedWidth();
+        double height = cluster->getRotatedHeight();
+
+        // check if fits on current shelf
+        if (currentX + width <= spec.targetWidth)
+        {
+            cluster->setPosition(Point(currentX, currentY));
+            currentX += width;
+            shelfHeight = std::max(shelfHeight, height);
+        }
+        // else make new shelf
+        else
+        {
+            currentX = 0.0;
+            currentY += shelfHeight;
+            shelfHeight = height;
+            cluster->setPosition(Point(currentX, currentY));
+            currentX += width;
+        }
+    }
+
+    return currentY + shelfHeight;
+/*
     std::vector<Module *> sortedModules;
 
     for (auto &module : modules)
@@ -311,5 +346,8 @@ float Floorplanner::category1Opt()
         }
     }
 
-    return currentY + shelfHeight;
+    return currentY + shelfHeight;*/
+    //clusters[0]->setPosition(Point(100, 100));
+    //clusters[2]->setPosition(Point(200, 200));
+    return 0.0;
 }

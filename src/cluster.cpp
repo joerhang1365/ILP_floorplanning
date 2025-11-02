@@ -138,7 +138,7 @@ void Cluster::rotate()
         Point rotated_pos = Point(-relative_pos.y(), relative_pos.x());
         Point new_module_center = cluster_center + rotated_pos;
 
-        Point new_module_pos = Point(new_module_center.x() - height / 2.0, new_module_center.y() - width / 2.0);
+        Point new_module_pos = Point(new_module_center.x() - round(height / 2.0), new_module_center.y() - round(width / 2.0));
         
         // update the rotation flag and set new position
         m->rotate();
@@ -148,4 +148,42 @@ void Cluster::rotate()
     // update clusters rotation flag
     // it is derived from the Module class
     Module::rotate();
+}
+
+double Cluster::getRotatedWidth()
+{
+    double width = 0.0;
+
+    for (auto m : leaf)
+    {
+        if (m->getPosition().x() + m->getRotatedWidth() > width)
+        {
+            width = m->getPosition().x() + m->getRotatedWidth();
+        }
+    }
+
+    return width;
+}
+
+double Cluster::getRotatedHeight()
+{
+    double height = 0.0;
+
+    for (auto m : leaf)
+    {
+        if (m->getPosition().y() + m->getRotatedHeight() > height)
+        {
+            height = m->getPosition().y() + m->getRotatedHeight();
+        }
+    }
+
+    return height;
+}
+
+Point Cluster::getCenter()
+{
+    double centerX = round(getRotatedWidth() / 2.0);
+    double centerY = round(getRotatedHeight() / 2.0);
+
+    return Point(centerX, centerY);
 }
