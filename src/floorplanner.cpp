@@ -74,7 +74,7 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     // create variable for overall height
     solver_.addVariable("Y", 0.0, targetHeight, GRB_CONTINUOUS);
     
-    // set objective to minimize height
+    // set objective to minimize 'M' height
     solver_.setObjective({{"Y", 1.0}}, 'M');
 
     // add constraints for each module
@@ -120,11 +120,12 @@ bool Floorplanner::solveCluster(Cluster * c, float targetWidth, float targetHeig
     
     // after all constraints and the objective are set solve the model
     // add a time limit if it takes too long
-    double seconds = 600.0;
-    solver_.setTimeLimit(seconds);
+
+    solver_.setTimeLimit(3600);
     solver_.optimize();
 
     const int status = solver_.getStatus();
+
     if (status == GRB_INFEASIBLE)
     {
         std::cout << "ILP unsat!" << std::endl;
@@ -196,108 +197,6 @@ float Floorplanner::category0Opt()
 // then arrange the clusters using their width and heights using my shelf packing algorithm
 float Floorplanner::category1Opt()
 {
-    const int clusterSize = 5;
-
-    clusters.clear();
-
-    // group modules into clusters
-    for (size_t i = 0; i < modules.size(); i += clusterSize)
-    {
-        std::vector<Module *> moduleCluster;
-        size_t end = std::min(i + clusterSize, modules.size());
-
-        for (size_t j = i; j < end; j++)
-        {
-            moduleCluster.push_back(modules[j].get());
-        }
-
-        if (!moduleCluster.empty())
-        {
-            clusters.push_back(std::make_unique<Cluster>(moduleCluster));
-        }
-    }
-
-    // solve each cluster
-    for (auto &cluster : clusters)
-    {
-        // try to find good constraints for solver
-        double totalArea = 0.0;
-        double maxModWidth = 0.0;
-        double maxModHeight = 0.0;
-
-        for (auto &module : cluster->getSubModules())
-        {
-            double w = module->getRotatedWidth();
-            double h = module->getRotatedHeight();
-            totalArea += w * h;
-            maxModWidth = std::max(maxModWidth, w);
-            maxModHeight = std::max(maxModHeight, h);
-        }
-        
-        // Try progressively larger bounds with better scaling
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            double width = std::min(static_cast<double>(spec.targetWidth), maxModWidth * (1.0 + attempt * 0.5));
-            double height = std::min(static_cast<double>(spec.targetHeight), maxModHeight * (1.0 + attempt * 0.5));
-            
-            if (solveCluster(cluster.get(), width, height))
-            {
-                break;
-            }
-        }
-    }
-
-    // arrange clusters using shelf packing
-
-    std::vector<Cluster *> sortedClusters;
-
-    for (auto &cluster : clusters)
-    {
-        sortedClusters.push_back(cluster.get());
-    }
-
-    for (auto &cluster : sortedClusters)
-    {
-        if (cluster->getRotatedHeight() < cluster->getRotatedWidth())
-        {
-            //cluster->rotate();
-        }
-    }
-
-    // sort tallest height
-    std::sort(sortedClusters.begin(), sortedClusters.end(), [](Cluster * a, Cluster * b) {
-        return a->getRotatedHeight() > b->getRotatedHeight();
-    });
-
-    double currentX = 0.0;
-    double currentY = 0.0;
-    double shelfHeight = 0.0;
-
-    for (auto &cluster : sortedClusters)
-    {
-        double width = cluster->getRotatedWidth();
-        double height = cluster->getRotatedHeight();
-
-        // check if fits on current shelf
-        if (currentX + width <= spec.targetWidth)
-        {
-            cluster->setPosition(Point(currentX, currentY));
-            currentX += width;
-            shelfHeight = std::max(shelfHeight, height);
-        }
-        // else make new shelf
-        else
-        {
-            currentX = 0.0;
-            currentY += shelfHeight;
-            shelfHeight = height;
-            cluster->setPosition(Point(currentX, currentY));
-            currentX += width;
-        }
-    }
-
-    return currentY + shelfHeight;
-/*
     std::vector<Module *> sortedModules;
 
     for (auto &module : modules)
@@ -346,7 +245,7 @@ float Floorplanner::category1Opt()
         }
     }
 
-    return currentY + shelfHeight;*/
+    return currentY + shelfHeight;
     //clusters[0]->setPosition(Point(100, 100));
     //clusters[2]->setPosition(Point(200, 200));
     return 0.0;

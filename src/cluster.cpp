@@ -126,23 +126,23 @@ void Cluster::rotate()
 
     collectAll(modules, clusters, true);
 
-    Point cluster_center = this->getCenter();
+    Point clusterCenter = this->getCenter();
 
     for (auto m : modules)
     {
         int width = m->getRotatedWidth();
         int height = m->getRotatedHeight();
-        Point module_center = m->getCenter();
+        Point moduleCenter = m->getCenter();
 
-        Point relative_pos = module_center - cluster_center;
-        Point rotated_pos = Point(-relative_pos.y(), relative_pos.x());
-        Point new_module_center = cluster_center + rotated_pos;
+        Point relativePos = moduleCenter - clusterCenter;
+        Point rotatedPos = Point(-relativePos.y(), relativePos.x());
+        Point newModuleCenter = clusterCenter + rotatedPos;
 
-        Point new_module_pos = Point(new_module_center.x() - round(height / 2.0), new_module_center.y() - round(width / 2.0));
+        Point newModulepos = Point(newModuleCenter.x() - round(height / 2.0), newModuleCenter.y() - round(width / 2.0));
         
         // update the rotation flag and set new position
         m->rotate();
-        m->setPosition(new_module_pos);
+        m->setPosition(newModulepos);
     }
 
     // update clusters rotation flag
