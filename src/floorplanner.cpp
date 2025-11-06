@@ -213,7 +213,7 @@ float Floorplanner::category1Opt()
         }
     }
 
-    // sort tallest height
+    // sort by tallest height first
     std::sort(sortedModules.begin(), sortedModules.end(), [](Module * a, Module * b) {
         return a->getRotatedHeight() > b->getRotatedHeight();
     });

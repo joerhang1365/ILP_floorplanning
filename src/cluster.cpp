@@ -1,4 +1,5 @@
 #include "cluster.h"
+#include <limits>
 
 Cluster::Cluster(std::vector<Module *> M) : Module() 
 {
@@ -126,23 +127,29 @@ void Cluster::rotate()
 
     collectAll(modules, clusters, true);
 
+    if (modules.empty())
+    {
+        return;
+    }
+
     Point clusterCenter = this->getCenter();
 
+    // rotate each module individually relative to the cluster center
     for (auto m : modules)
     {
-        int width = m->getRotatedWidth();
-        int height = m->getRotatedHeight();
+        int moduleWidth = m->getRotatedWidth();
+        int moduleHeight = m->getRotatedHeight();
         Point moduleCenter = m->getCenter();
 
         Point relativePos = moduleCenter - clusterCenter;
         Point rotatedPos = Point(-relativePos.y(), relativePos.x());
         Point newModuleCenter = clusterCenter + rotatedPos;
 
-        Point newModulepos = Point(newModuleCenter.x() - round(height / 2.0), newModuleCenter.y() - round(width / 2.0));
+        Point newModulePos = Point(newModuleCenter.x() - round(moduleHeight / 2.0), newModuleCenter.y() - round(moduleWidth / 2.0));
         
         // update the rotation flag and set new position
         m->rotate();
-        m->setPosition(newModulepos);
+        m->setPosition(newModulePos);
     }
 
     // update clusters rotation flag
@@ -152,38 +159,115 @@ void Cluster::rotate()
 
 double Cluster::getRotatedWidth()
 {
-    double width = 0.0;
+    std::vector<Module *> modules;
 
-    for (auto m : leaf)
+    collectAllLeaves(modules);
+
+    if (modules.empty())
     {
-        if (m->getPosition().x() + m->getRotatedWidth() > width)
+        return 0.0;
+    }
+
+    double minX = std::numeric_limits<double>::infinity();
+    double maxX = -std::numeric_limits<double>::infinity();
+
+    // find largest and smallest X position in cluster
+    for (auto m : modules)
+    {
+        double moduleX = m->getPosition().x();
+        double moduleWidth = m->getRotatedWidth();
+        
+        if (moduleX + moduleWidth > maxX)
         {
-            width = m->getPosition().x() + m->getRotatedWidth();
+            maxX = moduleX + moduleWidth;
+        }
+        else if (moduleX < minX)
+        {
+            minX = moduleX;
         }
     }
 
-    return width;
+    return maxX - minX;
 }
 
 double Cluster::getRotatedHeight()
 {
-    double height = 0.0;
+    std::vector<Module *> modules;
 
-    for (auto m : leaf)
+    collectAllLeaves(modules);
+
+    if (modules.empty())
     {
-        if (m->getPosition().y() + m->getRotatedHeight() > height)
+        return 0.0;
+    }
+
+    double minY = std::numeric_limits<double>::infinity();
+    double maxY = -std::numeric_limits<double>::infinity();
+
+    // find largest and smallest Y position in cluster
+    for (auto m : modules)
+    {
+        double moduleY = m->getPosition().y();
+        double moduleHeight = m->getRotatedHeight();
+
+        if (moduleY < minY) 
         {
-            height = m->getPosition().y() + m->getRotatedHeight();
+            minY = moduleY;
+        }
+        else if (moduleY + moduleHeight > maxY) 
+        {
+            maxY = moduleY + moduleHeight;
         }
     }
 
-    return height;
+    return maxY - minY;
 }
 
 Point Cluster::getCenter()
 {
-    double centerX = round(getRotatedWidth() / 2.0);
-    double centerY = round(getRotatedHeight() / 2.0);
+    std::vector<Module *> modules;
+
+    collectAllLeaves(modules);
+
+    if (modules.empty())
+    {
+        return getPosition();
+    }
+
+    double minX = std::numeric_limits<double>::infinity();
+    double maxX = -std::numeric_limits<double>::infinity();
+    double minY = std::numeric_limits<double>::infinity();
+    double maxY = -std::numeric_limits<double>::infinity();
+
+    for (auto m : modules)
+    {
+        double moduleX = m->getPosition().x();
+        double moduleWidth = m->getRotatedWidth();
+        double moduleY = m->getPosition().y();
+        double moduleHeight = m->getRotatedHeight();
+
+        if (moduleX + moduleWidth > maxX)
+        {
+            maxX = moduleX + moduleWidth;
+        }
+        else if (moduleX < minX)
+        {
+            minX = moduleX;
+        }
+
+        if (moduleY < minY) 
+        {
+            minY = moduleY;
+        }
+        else if (moduleY + moduleHeight > maxY) 
+        {
+            maxY = moduleY + moduleHeight;
+        }
+    }
+
+    // average pos
+    double centerX = (minX + maxX) / 2.0;
+    double centerY = (minY + maxY) / 2.0;
 
     return Point(centerX, centerY);
 }
